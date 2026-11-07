@@ -2651,6 +2651,30 @@ async def clear_ai_history(ctx):
     AI_HISTORY.pop((ctx.guild.id, ctx.author.id), None)
     await ctx.reply("Your AI chat history has been cleared.", mention_author=False)
     
+@bot.command(name="aimodels")
+@commands.guild_only()
+async def ai_models(ctx):
+    """Owner only: list the chat model IDs your AI key can use right now."""
+    if not user_is_supervisor(ctx):
+        return await ctx.reply("Only server owners and trusted owners can use this.", mention_author=False)
+    if not HF_API_KEY:
+        return await ctx.reply("No AI key is set. Add GROQ_API_KEY in the host environment.", mention_author=False)
+    models_url = AI_API_URL.replace("/chat/completions", "/models")
+    try:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(models_url, headers={"Authorization": f"Bearer {HF_API_KEY}"}) as resp:
+                if resp.status >= 400:
+                    return await ctx.reply(f"Could not fetch models (HTTP {resp.status}).", mention_author=False)
+                data = await resp.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        return await ctx.reply("Could not reach the AI service.", mention_author=False)
+    skip = ("whisper", "tts", "guard", "orpheus", "embed", "playai")
+    ids = sorted(m.get("id", "") for m in data.get("data", []) if m.get("id") and not any(k in m["id"].lower() for k in skip))
+    text = "Models available to your key (current: `" + HF_MODEL + "`):\n" + "\n".join(f"`{i}`" for i in ids)
+    await ctx.reply(text[:1900], mention_author=False)
+
+
 @bot.command(name="setaichannel")
 @commands.guild_only()
 async def set_ai_channel(ctx, channel: discord.TextChannel = None):
@@ -3038,9 +3062,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
 
 
 
