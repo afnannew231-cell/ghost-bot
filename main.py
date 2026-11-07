@@ -2539,16 +2539,18 @@ import discord
 # HUGGING FACE AI CONFIG
 # =========================
 
-HF_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "").strip()
+# Free provider: Groq (OpenAI-compatible API, but NOT OpenAI). Get a key at console.groq.com
+HF_API_KEY = (os.getenv("GROQ_API_KEY", "") or os.getenv("HUGGINGFACE_API_KEY", "")).strip()
+AI_API_URL = os.getenv("AI_API_URL", "https://api.groq.com/openai/v1/chat/completions").strip()
 # Using a powerful, free-tier accessible instruction model via Hugging Face router
-HF_MODEL = os.getenv("HUGGINGFACE_MODEL", "meta-llama/Llama-3.3-70B-Instruct").strip()
+HF_MODEL = os.getenv("AI_MODEL", "llama-3.3-70b-versatile").strip()
 AI_HISTORY = {}
 AI_LAST_REQUEST = {}
 
 async def call_ai(guild_id, user_id, prompt):
     """Send a conversation request to Hugging Face's serverless Inference API."""
     if not HF_API_KEY:
-        raise RuntimeError("AI is not configured yet. Set HUGGINGFACE_API_KEY in the hosting environment.")
+        raise RuntimeError("AI is not configured yet. Set GROQ_API_KEY in the hosting environment.")
     
     history_key = (int(guild_id), int(user_id))
     history = AI_HISTORY.get(history_key, [])[-6:]  # Keep last 6 turns for context
@@ -2576,18 +2578,18 @@ async def call_ai(guild_id, user_id, prompt):
     timeout = aiohttp.ClientTimeout(total=45)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(
-            "https://router.huggingface.co/v1/chat/completions",
+            AI_API_URL,
             headers=headers,
             json=payload
         ) as response:
             if response.status >= 400:
                 body = await response.text()
-                logging.error("Hugging Face API error %s (model=%s): %s", response.status, HF_MODEL, body[:500])
-                print(f"[HF ERROR] status={response.status} model={HF_MODEL} body={body[:500]}", flush=True)
+                logging.error("AI API error %s (model=%s): %s", response.status, HF_MODEL, body[:500])
+                print(f"[AI ERROR] status={response.status} model={HF_MODEL} body={body[:500]}", flush=True)
                 if response.status == 401:
-                    raise RuntimeError("The Hugging Face token was rejected. Check your HUGGINGFACE_API_KEY secret.")
+                    raise RuntimeError("The AI key was rejected. Check your GROQ_API_KEY secret.")
                 if response.status == 429:
-                    raise RuntimeError("The Hugging Face rate limit was reached or model is loading. Try again shortly.")
+                    raise RuntimeError("The free AI rate limit was reached. Try again in a minute.")
                 raise RuntimeError(f"The AI service returned an error (HTTP {response.status}). Check the bot console for details.")
             
             data = await response.json()
@@ -2633,7 +2635,7 @@ async def ask_ai(ctx, *, prompt: str):
         try:
             answer = await call_ai(ctx.guild.id, ctx.author.id, prompt)
         except (aiohttp.ClientError, asyncio.TimeoutError):
-            return await ctx.reply("I couldn't reach the Hugging Face AI service. Try again in a moment.", mention_author=False)
+            return await ctx.reply("I couldn't reach the AI service. Try again in a moment.", mention_author=False)
         except RuntimeError as exc:
             return await ctx.reply(str(exc), mention_author=False)
 
@@ -3036,18 +3038,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
